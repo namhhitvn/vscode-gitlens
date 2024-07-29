@@ -810,7 +810,7 @@ export class LocalGitProvider implements GitProvider, Disposable {
 
 					if (f.name === '.git') {
 						repositories.push(resolvePath(root, f.name));
-					} else if (depth >= 0 && f.isDirectory() && !excludes.has(f.name)) {
+					} else if (depth >= 0 && (f.isDirectory() || f.isSymbolicLink()) && !excludes.has(f.name)) {
 						try {
 							await this.repositorySearchCore(
 								resolvePath(root, f.name),
