@@ -1,11 +1,15 @@
 import type { AuthenticationSession, CancellationToken } from 'vscode';
 import { authentication } from 'vscode';
 import type { Container } from '../../../container';
-import type { Account } from '../../../git/models/author';
+import type { Account, UnidentifiedAuthor } from '../../../git/models/author';
 import type { DefaultBranch } from '../../../git/models/defaultBranch';
 import type { IssueOrPullRequest, SearchedIssue } from '../../../git/models/issue';
-import type { PullRequestMergeMethod, PullRequestState, SearchedPullRequest } from '../../../git/models/pullRequest';
-import { PullRequest } from '../../../git/models/pullRequest';
+import type {
+	PullRequest,
+	PullRequestMergeMethod,
+	PullRequestState,
+	SearchedPullRequest,
+} from '../../../git/models/pullRequest';
 import type { RepositoryMetadata } from '../../../git/models/repositoryMetadata';
 import { log } from '../../../system/decorators/log';
 import { ensurePaidPlan } from '../../utils';
@@ -49,7 +53,7 @@ abstract class GitHubIntegrationBase<ID extends SupportedIntegrationIds> extends
 		options?: {
 			avatarSize?: number;
 		},
-	): Promise<Account | undefined> {
+	): Promise<Account | UnidentifiedAuthor | undefined> {
 		return (await this.container.github)?.getAccountForCommit(this, accessToken, repo.owner, repo.name, ref, {
 			...options,
 			baseUrl: this.apiBaseUrl,
@@ -221,13 +225,13 @@ abstract class GitHubIntegrationBase<ID extends SupportedIntegrationIds> extends
 
 	protected override async mergeProviderPullRequest(
 		{ accessToken }: AuthenticationSession,
-		pr: PullRequest | { id: string; headRefSha: string },
+		pr: PullRequest,
 		options?: {
 			mergeMethod?: PullRequestMergeMethod;
 		},
 	): Promise<boolean> {
-		const id = pr instanceof PullRequest ? pr.nodeId : pr.id;
-		const headRefSha = pr instanceof PullRequest ? pr.refs?.head?.sha : pr.headRefSha;
+		const id = pr.nodeId;
+		const headRefSha = pr.refs?.head?.sha;
 		if (id == null || headRefSha == null) return false;
 		return (
 			(await this.container.github)?.mergePullRequest(this, accessToken, id, headRefSha, {

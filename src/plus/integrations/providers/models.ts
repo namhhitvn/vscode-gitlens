@@ -26,6 +26,7 @@ import {
 	GitPullRequestReviewState,
 	GitPullRequestState,
 } from '@gitkraken/provider-apis';
+import type { GitProvider } from '@gitkraken/provider-apis/dist/providers/gitProvider';
 import type { Account as UserAccount } from '../../../git/models/author';
 import type { IssueMember, SearchedIssue } from '../../../git/models/issue';
 import { RepositoryAccessLevel } from '../../../git/models/issue';
@@ -235,6 +236,8 @@ export type GetPullRequestsForAzureProjectsFn = (
 	options?: EnterpriseOptions,
 ) => Promise<{ data: ProviderPullRequest[] }>;
 
+export type MergePullRequestFn = GitProvider['mergePullRequest'];
+
 export type GetIssueFn = (
 	input: { resourceId: string; number: string },
 	options?: EnterpriseOptions,
@@ -286,10 +289,7 @@ export type GetAzureProjectsForResourceFn = (
 	input: { namespace: string; cursor?: string },
 	options?: EnterpriseOptions,
 ) => Promise<{ data: AzureProject[]; pageInfo?: PageInfo }>;
-export type GetIssuesForProjectFn = (
-	input: GetIssuesForProjectInput,
-	options?: EnterpriseOptions,
-) => Promise<{ data: ProviderIssue[] }>;
+export type GetIssuesForProjectFn = Jira['getIssuesForProject'];
 export type GetIssuesForResourceForCurrentUserFn = (
 	input: { resourceId: string },
 	options?: EnterpriseOptions,
@@ -315,6 +315,7 @@ export interface ProviderInfo extends ProviderMetadata {
 	getIssuesForProjectFn?: GetIssuesForProjectFn;
 	getReposForAzureProjectFn?: GetReposForAzureProjectFn;
 	getIssuesForResourceForCurrentUserFn?: GetIssuesForResourceForCurrentUserFn;
+	mergePullRequestFn?: MergePullRequestFn;
 }
 
 export interface ProviderMetadata {
@@ -376,7 +377,7 @@ export const providersMetadata: ProvidersMetadata = {
 		],
 		// Use 'username' property on account for issue filters
 		supportedIssueFilters: [IssueFilter.Author, IssueFilter.Assignee],
-		scopes: ['read_api', 'read_user', 'read_repository'],
+		scopes: ['api', 'read_user', 'read_repository'],
 	},
 	[SelfHostedIntegrationId.GitLabSelfHosted]: {
 		domain: '',
@@ -391,7 +392,7 @@ export const providersMetadata: ProvidersMetadata = {
 		],
 		// Use 'username' property on account for issue filters
 		supportedIssueFilters: [IssueFilter.Author, IssueFilter.Assignee],
-		scopes: ['read_api', 'read_user', 'read_repository'],
+		scopes: ['api', 'read_user', 'read_repository'],
 	},
 	[HostingIntegrationId.Bitbucket]: {
 		domain: 'bitbucket.org',
@@ -511,12 +512,14 @@ export function toSearchedIssue(
 			closed: issue.closedDate != null,
 			state: issue.closedDate != null ? 'closed' : 'opened',
 			author: {
+				id: issue.author.id ?? '',
 				name: issue.author.name ?? '',
 				avatarUrl: issue.author.avatarUrl ?? undefined,
 				url: issue.author.url ?? undefined,
 			},
 			assignees:
 				issue.assignees?.map(assignee => ({
+					id: assignee.id ?? '',
 					name: assignee.name ?? '',
 					avatarUrl: assignee.avatarUrl ?? undefined,
 					url: assignee.url ?? undefined,
@@ -549,6 +552,7 @@ export function issueFilterToReason(filter: IssueFilter): 'authored' | 'assigned
 export function toAccount(account: ProviderAccount, provider: ProviderReference): UserAccount {
 	return {
 		provider: provider,
+		id: account.id,
 		name: account.name ?? undefined,
 		email: account.email ?? undefined,
 		avatarUrl: account.avatarUrl ?? undefined,
@@ -792,6 +796,8 @@ export function fromProviderPullRequest(pr: ProviderPullRequest, integration: In
 		{
 			owner: pr.repository.owner.login,
 			repo: pr.repository.name,
+			// This has to be here until we can take this information from ProviderPullRequest:
+			accessLevel: RepositoryAccessLevel.Write,
 		},
 		fromProviderPullRequestState(pr.state),
 		pr.createdDate,
@@ -847,18 +853,19 @@ export function toProviderPullRequestWithUniqueId(pr: PullRequest): PullRequestW
 
 export function toProviderAccount(account: PullRequestMember | IssueMember): ProviderAccount {
 	return {
+		id: account.id ?? null,
 		avatarUrl: account.avatarUrl ?? null,
 		name: account.name ?? null,
 		url: account.url ?? null,
 		// TODO: Implement these in our own model
 		email: '',
 		username: account.name ?? null,
-		id: account.name ?? null,
 	};
 }
 
 export function fromProviderAccount(account: ProviderAccount | null): PullRequestMember | IssueMember {
 	return {
+		id: account?.id ?? '',
 		name: account?.name ?? 'unknown',
 		avatarUrl: account?.avatarUrl ?? undefined,
 		url: account?.url ?? '',

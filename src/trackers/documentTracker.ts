@@ -18,10 +18,11 @@ import type { RepositoryChangeEvent } from '../git/models/repository';
 import { RepositoryChange, RepositoryChangeComparisonMode } from '../git/models/repository';
 import { configuration } from '../system/configuration';
 import { setContext } from '../system/context';
+import { debug } from '../system/decorators/log';
 import { once } from '../system/event';
 import type { Deferrable } from '../system/function';
 import { debounce } from '../system/function';
-import { findTextDocument, isVisibleDocument } from '../system/utils';
+import { findTextDocument, getResourceContextKeyValue, isVisibleDocument } from '../system/utils';
 import type { TrackedGitDocument } from './trackedDocument';
 import { createTrackedGitDocument } from './trackedDocument';
 
@@ -319,6 +320,7 @@ export class GitDocumentTracker implements Disposable {
 		return doc;
 	}
 
+	@debug()
 	private async addCore(document: TextDocument, visible?: boolean): Promise<TrackedGitDocument> {
 		const doc = createTrackedGitDocument(
 			this.container,
@@ -335,6 +337,7 @@ export class GitDocumentTracker implements Disposable {
 		return doc;
 	}
 
+	@debug()
 	async clear() {
 		for (const d of this._documentMap.values()) {
 			(await d).dispose();
@@ -346,6 +349,7 @@ export class GitDocumentTracker implements Disposable {
 	get(document: TextDocument): Promise<TrackedGitDocument> | undefined;
 	get(uri: Uri): Promise<TrackedGitDocument> | undefined;
 	get(documentOrUri: TextDocument | Uri): Promise<TrackedGitDocument> | undefined;
+	@debug()
 	get(documentOrUri: TextDocument | Uri): Promise<TrackedGitDocument> | undefined {
 		if (documentOrUri instanceof Uri) {
 			const document = findTextDocument(documentOrUri);
@@ -378,6 +382,7 @@ export class GitDocumentTracker implements Disposable {
 
 	resetCache(document: TextDocument, affects: 'blame' | 'diff' | 'log'): Promise<void>;
 	resetCache(uri: Uri, affects: 'blame' | 'diff' | 'log'): Promise<void>;
+	@debug()
 	async resetCache(documentOrUri: TextDocument | Uri, affects: 'blame' | 'diff' | 'log'): Promise<void> {
 		const doc = this.get(documentOrUri);
 		if (doc == null) return;
@@ -395,6 +400,7 @@ export class GitDocumentTracker implements Disposable {
 		}
 	}
 
+	@debug({ args: { 1: false } })
 	private async remove(document: TextDocument, tracked?: TrackedGitDocument): Promise<void> {
 		let docPromise;
 		if (tracked != null) {
@@ -413,23 +419,46 @@ export class GitDocumentTracker implements Disposable {
 	private _updateContextDebounced: Deferrable<() => void> | undefined;
 
 	updateContext(uri: Uri, blameable: boolean, tracked: boolean) {
-		if (tracked) {
-			this._openUrisTracked.add(uri.toString());
-		} else {
-			this._openUrisTracked.delete(uri.toString());
+		let changed = false;
+
+		function updateContextCore(this: GitDocumentTracker, key: string, blameable: boolean, tracked: boolean) {
+			if (tracked) {
+				if (!this._openUrisTracked.has(key)) {
+					changed = true;
+					this._openUrisTracked.add(key);
+				}
+			} else if (this._openUrisTracked.has(key)) {
+				changed = true;
+				this._openUrisTracked.delete(key);
+			}
+
+			if (blameable) {
+				if (!this._openUrisBlameable.has(key)) {
+					changed = true;
+
+					this._openUrisBlameable.add(key);
+				}
+			} else if (this._openUrisBlameable.has(key)) {
+				changed = true;
+				this._openUrisBlameable.delete(key);
+			}
+
+			if (!changed) return;
+
+			this._updateContextDebounced ??= debounce(() => {
+				void setContext('gitlens:tabs:tracked', [...this._openUrisTracked]);
+				void setContext('gitlens:tabs:blameable', [...this._openUrisBlameable]);
+			}, 100);
+			this._updateContextDebounced();
 		}
 
-		if (blameable) {
-			this._openUrisBlameable.add(uri.toString());
-		} else {
-			this._openUrisBlameable.delete(uri.toString());
+		const key = getResourceContextKeyValue(uri);
+		if (typeof key !== 'string') {
+			void key.then(u => updateContextCore.call(this, u, blameable, tracked));
+			return;
 		}
 
-		this._updateContextDebounced ??= debounce(() => {
-			void setContext('gitlens:tabs:tracked', [...this._openUrisTracked]);
-			void setContext('gitlens:tabs:blameable', [...this._openUrisBlameable]);
-		}, 100);
-		this._updateContextDebounced();
+		updateContextCore.call(this, key, blameable, tracked);
 	}
 
 	private fireDocumentDirtyStateChanged(e: DocumentDirtyStateChangeEvent) {

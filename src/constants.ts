@@ -1300,7 +1300,7 @@ export type TelemetryEvents = {
 
 	/** Sent when the user takes an action on a launchpad item */
 	'launchpad/title/action': LaunchpadEventData & {
-		action: 'feedback' | 'open-on-gkdev' | 'refresh' | 'settings';
+		action: 'feedback' | 'open-on-gkdev' | 'refresh' | 'settings' | 'connect';
 	};
 
 	/** Sent when the user takes an action on a launchpad item */
@@ -1483,12 +1483,15 @@ export type TelemetryEvents = {
 };
 
 type AIEventBase = {
-	model: {
-		id: AIModels;
-		provider: { id: AIProviders; name: string };
-	};
+	'model.id': AIModels;
+	'model.provider.id': AIProviders;
+	'model.provider.name': string;
+	'retry.count': number;
 	duration?: number;
-	failed?: { reason: 'user-declined' | 'user-cancelled' } | { reason: 'error'; error: string };
+	'input.length'?: number;
+	'output.length'?: number;
+	'failed.reason'?: 'user-declined' | 'user-cancelled' | 'error';
+	'failed.error'?: string;
 };
 
 export type AIGenerateCommitEvent = {

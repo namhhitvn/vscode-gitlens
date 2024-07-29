@@ -1,4 +1,4 @@
-import type { QuickPick } from 'vscode';
+import type { QuickInputButton, QuickPick, QuickPickItem } from 'vscode';
 import { commands, Uri } from 'vscode';
 import { getAvatarUri } from '../../avatars';
 import type {
@@ -16,10 +16,12 @@ import {
 	StepResultBreak,
 } from '../../commands/quickCommand';
 import {
+	ConnectIntegrationButton,
 	FeedbackQuickInputButton,
 	LaunchpadSettingsQuickInputButton,
 	MergeQuickInputButton,
 	OpenOnGitHubQuickInputButton,
+	OpenOnGitLabQuickInputButton,
 	OpenOnWebQuickInputButton,
 	OpenWorktreeInNewWindowQuickInputButton,
 	PinQuickInputButton,
@@ -45,6 +47,7 @@ import {
 	HostingIntegrationId,
 	ProviderBuildStatusState,
 	ProviderPullRequestReviewState,
+	SelfHostedIntegrationId,
 } from '../integrations/providers/models';
 import type {
 	FocusAction,
@@ -82,12 +85,27 @@ export interface FocusItemQuickPickItem extends QuickPickItemOfT<FocusItem> {
 	group: FocusGroup;
 }
 
+type ConnectMoreIntegrationsItem = QuickPickItem & {
+	item: undefined;
+	group: undefined;
+};
+const connectMoreIntegrationsItem: ConnectMoreIntegrationsItem = {
+	label: 'Connect more integrations',
+	detail: 'Connect integration with more Git providers',
+	item: undefined,
+	group: undefined,
+};
+function isConnectMoreIntegrationsItem(item: unknown): item is ConnectMoreIntegrationsItem {
+	return item === connectMoreIntegrationsItem;
+}
+
 interface Context {
 	result: FocusCategorizedResult;
 
 	title: string;
 	collapsed: Map<FocusGroup, boolean>;
 	telemetryContext: LaunchpadTelemetryContext | undefined;
+	connectedIntegrations: Map<IntegrationId, boolean>;
 }
 
 interface GroupedFocusItem extends FocusItem {
@@ -204,6 +222,7 @@ export class FocusCommand extends QuickCommand<State> {
 			title: this.title,
 			collapsed: collapsed,
 			telemetryContext: this.telemetryContext,
+			connectedIntegrations: await this.container.focus.getConnectedIntegrations(),
 		};
 
 		let opened = false;
@@ -211,7 +230,9 @@ export class FocusCommand extends QuickCommand<State> {
 		while (this.canStepsContinue(state)) {
 			context.title = this.title;
 
-			if (state.counter < 1 && !(await this.container.focus.hasConnectedIntegration())) {
+			let newlyConnected = false;
+			const hasConnectedIntegrations = [...context.connectedIntegrations.values()].some(c => c);
+			if (state.counter < 1 && !hasConnectedIntegrations) {
 				if (this.container.telemetry.enabled) {
 					this.container.telemetry.sendEvent(
 						opened ? 'launchpad/steps/connect' : 'launchpad/opened',
@@ -238,9 +259,10 @@ export class FocusCommand extends QuickCommand<State> {
 					}
 					throw new Error(`Unable to connect to ${integration}`);
 				}
+				newlyConnected = result !== StepResultBreak;
 			}
 
-			await updateContextItems(this.container, context);
+			await updateContextItems(this.container, context, { force: newlyConnected });
 
 			if (state.counter < 2 || state.item == null) {
 				if (this.container.telemetry.enabled) {
@@ -257,10 +279,32 @@ export class FocusCommand extends QuickCommand<State> {
 				opened = true;
 
 				const result = yield* this.pickFocusItemStep(state, context, {
-					picked: state.item?.id,
+					picked: state.item?.graphQLId,
 					selectTopItem: state.selectTopItem,
 				});
 				if (result === StepResultBreak) continue;
+
+				if (isConnectMoreIntegrationsItem(result)) {
+					const connectingResult = yield* this.confirmIntegrationConnectStep(state, context);
+					if (
+						connectingResult !== StepResultBreak &&
+						!(await this.ensureIntegrationConnected(connectingResult))
+					) {
+						let integration;
+						switch (connectingResult) {
+							case HostingIntegrationId.GitHub:
+								integration = 'GitHub';
+								break;
+							default:
+								integration = `integration (${connectingResult})`;
+								break;
+						}
+						throw new Error(`Unable to connect to ${integration}`);
+					}
+					newlyConnected = connectingResult !== StepResultBreak;
+					await updateContextItems(this.container, context, { force: newlyConnected });
+					continue;
+				}
 
 				state.item = result;
 			}
@@ -330,9 +374,10 @@ export class FocusCommand extends QuickCommand<State> {
 		state: StepState<State>,
 		context: Context,
 		{ picked, selectTopItem }: { picked?: string; selectTopItem?: boolean },
-	): StepResultGenerator<GroupedFocusItem> {
+	): StepResultGenerator<GroupedFocusItem | ConnectMoreIntegrationsItem> {
+		const hasDisconnectedIntegrations = [...context.connectedIntegrations.values()].some(c => !c);
 		const getItems = (result: FocusCategorizedResult) => {
-			const items: (FocusItemQuickPickItem | DirectiveQuickPickItem)[] = [];
+			const items: (FocusItemQuickPickItem | DirectiveQuickPickItem | ConnectMoreIntegrationsItem)[] = [];
 
 			if (result.items?.length) {
 				const uiGroups = groupAndSortFocusItems(result.items);
@@ -400,7 +445,7 @@ export class FocusCommand extends QuickCommand<State> {
 								buttons.push(OpenWorktreeInNewWindowQuickInputButton);
 							}
 
-							buttons.push(OpenOnGitHubQuickInputButton);
+							buttons.push(...getOpenOnGitProviderQuickInputButtons(i.provider.id));
 
 							return {
 								label: i.title.length > 60 ? `${i.title.substring(0, 60)}...` : i.title,
@@ -410,7 +455,7 @@ export class FocusCommand extends QuickCommand<State> {
 										? ` $(gitlens-code-suggestion) ${i.codeSuggestionsCount}`
 										: ''
 								} \u00a0 ${i.isNew ? '(New since last view)' : ''}`,
-								detail: `      ${
+								detail: `      ${i.viewer.pinned ? '$(pinned) ' : ''}${
 									i.actionableCategory === 'other'
 										? ''
 										: `${actionGroupMap.get(i.actionableCategory)![0]} \u2022  `
@@ -419,7 +464,7 @@ export class FocusCommand extends QuickCommand<State> {
 								buttons: buttons,
 								iconPath: i.author?.avatarUrl != null ? Uri.parse(i.author.avatarUrl) : undefined,
 								item: i,
-								picked: i.id === picked || i.id === topItem?.id,
+								picked: i.graphQLId === picked || i.graphQLId === topItem?.graphQLId,
 								group: ui,
 							};
 						}),
@@ -451,7 +496,9 @@ export class FocusCommand extends QuickCommand<State> {
 			};
 		}
 
-		const updateItems = async (quickpick: QuickPick<FocusItemQuickPickItem | DirectiveQuickPickItem>) => {
+		const updateItems = async (
+			quickpick: QuickPick<FocusItemQuickPickItem | DirectiveQuickPickItem | ConnectMoreIntegrationsItem>,
+		) => {
 			quickpick.busy = true;
 
 			try {
@@ -473,6 +520,7 @@ export class FocusCommand extends QuickCommand<State> {
 			matchOnDetail: true,
 			items: items,
 			buttons: [
+				...(hasDisconnectedIntegrations ? [ConnectIntegrationButton] : []),
 				FeedbackQuickInputButton,
 				OpenOnWebQuickInputButton,
 				LaunchpadSettingsQuickInputButton,
@@ -481,6 +529,9 @@ export class FocusCommand extends QuickCommand<State> {
 			// onDidChangeValue: async (quickpick, value) => {},
 			onDidClickButton: async (quickpick, button) => {
 				switch (button) {
+					case ConnectIntegrationButton:
+						this.sendTitleActionTelemetry('connect', context);
+						return this.next([connectMoreIntegrationsItem]);
 					case LaunchpadSettingsQuickInputButton:
 						this.sendTitleActionTelemetry('settings', context);
 						void commands.executeCommand('workbench.action.openSettings', 'gitlens.launchpad');
@@ -500,11 +551,15 @@ export class FocusCommand extends QuickCommand<State> {
 						await updateItems(quickpick);
 						break;
 				}
+				return undefined;
 			},
 
 			onDidClickItemButton: async (quickpick, button, { group, item }) => {
+				if (!item) return;
+
 				switch (button) {
 					case OpenOnGitHubQuickInputButton:
+					case OpenOnGitLabQuickInputButton:
 						this.sendItemActionTelemetry('soft-open', item, group, context);
 						this.container.focus.open(item);
 						break;
@@ -545,15 +600,21 @@ export class FocusCommand extends QuickCommand<State> {
 		});
 
 		const selection: StepSelection<typeof step> = yield step;
-		return canPickStepContinue(step, state, selection)
-			? { ...selection[0].item, group: selection[0].group }
-			: StepResultBreak;
+		if (!canPickStepContinue(step, state, selection)) {
+			return StepResultBreak;
+		}
+		const element = selection[0];
+		if (isConnectMoreIntegrationsItem(element)) {
+			return element;
+		}
+		return { ...element.item, group: element.group };
 	}
 
 	private *confirmStep(
 		state: FocusStepState,
 		context: Context,
 	): StepResultGenerator<FocusAction | FocusTargetAction> {
+		const gitProviderWebButtons = getOpenOnGitProviderQuickInputButtons(state.item.provider.id);
 		const confirmations: (
 			| QuickPickItemOfT<FocusAction>
 			| QuickPickItemOfT<FocusTargetAction>
@@ -569,7 +630,7 @@ export class FocusCommand extends QuickCommand<State> {
 						createdDateRelative: fromNow(state.item.createdDate),
 					}),
 					iconPath: state.item.author?.avatarUrl != null ? Uri.parse(state.item.author.avatarUrl) : undefined,
-					buttons: [OpenOnGitHubQuickInputButton],
+					buttons: [...gitProviderWebButtons],
 				},
 				'soft-open',
 			),
@@ -605,7 +666,7 @@ export class FocusCommand extends QuickCommand<State> {
 							{
 								label: 'Merge...',
 								detail: `Will merge ${from}${into}`,
-								buttons: [OpenOnGitHubQuickInputButton],
+								buttons: [...gitProviderWebButtons],
 							},
 							action,
 						),
@@ -616,8 +677,10 @@ export class FocusCommand extends QuickCommand<State> {
 					confirmations.push(
 						createQuickPickItemOfT(
 							{
-								label: `${this.getOpenActionLabel(state.item.actionableCategory)} on GitHub`,
-								buttons: [OpenOnGitHubQuickInputButton],
+								label: `${this.getOpenActionLabel(
+									state.item.actionableCategory,
+								)} on ${getIntegrationTitle(state.item.provider.id)}`,
+								buttons: [...gitProviderWebButtons],
 							},
 							action,
 						),
@@ -638,7 +701,7 @@ export class FocusCommand extends QuickCommand<State> {
 					confirmations.push(
 						createQuickPickItemOfT(
 							{
-								label: 'Open Worktree in New Window',
+								label: 'Open in Worktree',
 								detail: 'Will create or open a worktree in a new window',
 							},
 							action,
@@ -713,6 +776,7 @@ export class FocusCommand extends QuickCommand<State> {
 				onDidClickItemButton: (_quickpick, button, item) => {
 					switch (button) {
 						case OpenOnGitHubQuickInputButton:
+						case OpenOnGitLabQuickInputButton:
 							this.sendItemActionTelemetry('soft-open', state.item, state.item.group, context);
 							this.container.focus.open(state.item);
 							break;
@@ -738,11 +802,14 @@ export class FocusCommand extends QuickCommand<State> {
 
 	private *confirmIntegrationConnectStep(
 		state: StepState<State>,
-		_context: Context,
+		context: Context,
 	): StepResultGenerator<IntegrationId> {
 		const confirmations: (QuickPickItemOfT<IntegrationId> | DirectiveQuickPickItem)[] = [];
 
 		for (const integration of supportedFocusIntegrations) {
+			if (context.connectedIntegrations.get(integration)) {
+				continue;
+			}
 			switch (integration) {
 				case HostingIntegrationId.GitHub:
 					confirmations.push(
@@ -750,6 +817,17 @@ export class FocusCommand extends QuickCommand<State> {
 							{
 								label: 'Connect to GitHub...',
 								detail: 'Will connect to GitHub to provide access your pull requests and issues',
+							},
+							integration,
+						),
+					);
+					break;
+				case HostingIntegrationId.GitLab:
+					confirmations.push(
+						createQuickPickItemOfT(
+							{
+								label: 'Connect to GitLab...',
+								detail: 'Will connect to GitLab to provide access your pull requests and issues',
 							},
 							integration,
 						),
@@ -842,14 +920,16 @@ export class FocusCommand extends QuickCommand<State> {
 			status = `$(pass) No conflicts`;
 		}
 
-		return createQuickPickItemOfT({ label: status, buttons: [OpenOnGitHubQuickInputButton] }, 'soft-open');
+		const gitProviderWebButtons = getOpenOnGitProviderQuickInputButtons(item.provider.id);
+		return createQuickPickItemOfT({ label: status, buttons: [...gitProviderWebButtons] }, 'soft-open');
 	}
 
 	private getFocusItemReviewInformation(item: FocusItem): QuickPickItemOfT<FocusAction>[] {
+		const gitProviderWebButtons = getOpenOnGitProviderQuickInputButtons(item.provider.id);
 		if (item.reviews == null || item.reviews.length === 0) {
 			return [
 				createQuickPickItemOfT(
-					{ label: `$(info) No reviewers have been assigned`, buttons: [OpenOnGitHubQuickInputButton] },
+					{ label: `$(info) No reviewers have been assigned`, buttons: [...gitProviderWebButtons] },
 					'soft-open',
 				),
 			];
@@ -881,7 +961,7 @@ export class FocusCommand extends QuickCommand<State> {
 			if (reviewLabel != null) {
 				reviewInfo.push(
 					createQuickPickItemOfT(
-						{ label: reviewLabel, iconPath: iconPath, buttons: [OpenOnGitHubQuickInputButton] },
+						{ label: reviewLabel, iconPath: iconPath, buttons: [...gitProviderWebButtons] },
 						'soft-open',
 					),
 				);
@@ -1041,11 +1121,43 @@ export class FocusCommand extends QuickCommand<State> {
 	}
 }
 
+function getOpenOnGitProviderQuickInputButton(integrationId: string): QuickInputButton | undefined {
+	switch (integrationId) {
+		case HostingIntegrationId.GitLab:
+		case SelfHostedIntegrationId.GitLabSelfHosted:
+			return OpenOnGitLabQuickInputButton;
+		case HostingIntegrationId.GitHub:
+		case SelfHostedIntegrationId.GitHubEnterprise:
+			return OpenOnGitHubQuickInputButton;
+		default:
+			return undefined;
+	}
+}
+
+function getOpenOnGitProviderQuickInputButtons(integrationId: string): QuickInputButton[] {
+	const button = getOpenOnGitProviderQuickInputButton(integrationId);
+	return button != null ? [button] : [];
+}
+
+function getIntegrationTitle(integrationId: string): string {
+	switch (integrationId) {
+		case HostingIntegrationId.GitLab:
+		case SelfHostedIntegrationId.GitLabSelfHosted:
+			return 'GitLab';
+		case HostingIntegrationId.GitHub:
+		case SelfHostedIntegrationId.GitHubEnterprise:
+			return 'GitHub';
+		default:
+			return integrationId;
+	}
+}
+
 async function updateContextItems(container: Container, context: Context, options?: { force?: boolean }) {
 	context.result = await container.focus.getCategorizedItems(options);
 	if (container.telemetry.enabled) {
 		updateTelemetryContext(context);
 	}
+	context.connectedIntegrations = await container.focus.getConnectedIntegrations();
 }
 
 function updateTelemetryContext(context: Context) {

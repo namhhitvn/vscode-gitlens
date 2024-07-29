@@ -1,3 +1,8 @@
+import type {
+	CodeSuggestionsCountByPrUuid,
+	EnrichedItemsByUniqueId,
+	PullRequestWithUniqueID,
+} from '@gitkraken/provider-apis';
 import type { CancellationToken, ConfigurationChangeEvent } from 'vscode';
 import { Disposable, env, EventEmitter, Uri, window } from 'vscode';
 import { md5 } from '@env/crypto';
@@ -8,7 +13,7 @@ import { openComparisonChanges } from '../../git/actions/commit';
 import type { Account } from '../../git/models/author';
 import type { GitBranch } from '../../git/models/branch';
 import { getLocalBranchByUpstream } from '../../git/models/branch';
-import type { SearchedPullRequest } from '../../git/models/pullRequest';
+import type { PullRequest, SearchedPullRequest } from '../../git/models/pullRequest';
 import { getComparisonRefsForPullRequest } from '../../git/models/pullRequest';
 import type { GitRemote } from '../../git/models/remote';
 import type { Repository } from '../../git/models/repository';
@@ -16,6 +21,7 @@ import type { CodeSuggestionCounts, Draft } from '../../gk/models/drafts';
 import { executeCommand, registerCommand } from '../../system/command';
 import { configuration } from '../../system/configuration';
 import { debug, log } from '../../system/decorators/log';
+import { groupByMap } from '../../system/iterable';
 import { Logger } from '../../system/logger';
 import { getLogScope } from '../../system/logger.scope';
 import type { TimedResult } from '../../system/promise';
@@ -26,13 +32,19 @@ import { DeepLinkActionType, DeepLinkType } from '../../uris/deepLinks/deepLink'
 import { showInspectView } from '../../webviews/commitDetails/actions';
 import type { ShowWipArgs } from '../../webviews/commitDetails/protocol';
 import type { IntegrationResult } from '../integrations/integration';
-import type { EnrichablePullRequest, ProviderActionablePullRequest } from '../integrations/providers/models';
+import type {
+	EnrichablePullRequest,
+	IntegrationId,
+	ProviderActionablePullRequest,
+} from '../integrations/providers/models';
 import {
+	fromProviderPullRequest,
 	getActionablePullRequests,
 	HostingIntegrationId,
 	toProviderPullRequestWithUniqueId,
 } from '../integrations/providers/models';
 import type { EnrichableItem, EnrichedItem } from './enrichmentService';
+import { convertRemoteProviderIdToEnrichProvider, isEnrichableRemoteProviderId } from './enrichmentService';
 
 export const focusActionCategories = [
 	'mergeable',
@@ -165,7 +177,7 @@ export function getSuggestedActions(category: FocusActionCategory, isCurrentBran
 	if (isCurrentBranch) {
 		actions.push('show-overview', 'open-changes', 'code-suggest', 'open-in-graph');
 	} else {
-		actions.push('switch', 'open-worktree', 'switch-and-code-suggest', 'open-in-graph');
+		actions.push('open-worktree', 'switch', 'switch-and-code-suggest', 'open-in-graph');
 	}
 	return actions;
 }
@@ -202,7 +214,11 @@ type PullRequestsWithSuggestionCounts = {
 
 export type FocusRefreshEvent = FocusCategorizedResult;
 
-export const supportedFocusIntegrations = [HostingIntegrationId.GitHub];
+export const supportedFocusIntegrations = [HostingIntegrationId.GitHub, HostingIntegrationId.GitLab];
+type SupportedFocusIntegrationIds = (typeof supportedFocusIntegrations)[number];
+function isSupportedFocusIntegrationId(id: string): id is SupportedFocusIntegrationIds {
+	return supportedFocusIntegrations.includes(id as SupportedFocusIntegrationIds);
+}
 
 export type FocusCategorizedResult =
 	| {
@@ -276,7 +292,7 @@ export class FocusProvider implements Disposable {
 
 		const [prsResult, subscriptionResult] = await Promise.allSettled([
 			withDurationAndSlowEventOnTimeout(
-				this.container.integrations.getMyPullRequests([HostingIntegrationId.GitHub], cancellation, true),
+				this.container.integrations.getMyPullRequests(supportedFocusIntegrations, cancellation, true),
 				'getMyPullRequests',
 				this.container,
 			),
@@ -345,9 +361,14 @@ export class FocusProvider implements Disposable {
 			!this._codeSuggestions.has(item.uuid) ||
 			this._codeSuggestions.get(item.uuid)!.expiresAt < Date.now()
 		) {
+			const providerId = item.provider.id;
+			if (!isSupportedFocusIntegrationId(providerId)) {
+				return undefined;
+			}
+
 			this._codeSuggestions.set(item.uuid, {
 				promise: withDurationAndSlowEventOnTimeout(
-					this.container.drafts.getCodeSuggestions(item, HostingIntegrationId.GitHub, {
+					this.container.drafts.getCodeSuggestions(item, providerId, {
 						includeArchived: false,
 					}),
 					'getCodeSuggestions',
@@ -419,16 +440,17 @@ export class FocusProvider implements Disposable {
 	@log<FocusProvider['merge']>({ args: { 0: i => `${i.id} (${i.provider.name} ${i.type})` } })
 	async merge(item: FocusItem): Promise<void> {
 		if (item.graphQLId == null || item.headRef?.oid == null) return;
-		// TODO: Include other providers.
-		if (item.provider.id !== 'github') return;
+		const integrationId = item.provider.id;
+		if (!isSupportedFocusIntegrationId(integrationId)) return;
 		const confirm = await window.showQuickPick(['Merge', 'Cancel'], {
 			placeHolder: `Are you sure you want to merge ${item.headRef?.name ?? 'this pull request'}${
 				item.baseRef?.name ? ` into ${item.baseRef.name}` : ''
 			}? This cannot be undone.`,
 		});
 		if (confirm !== 'Merge') return;
-		const integrations = await this.container.integrations.get(HostingIntegrationId.GitHub);
-		await integrations.mergePullRequest({ id: item.graphQLId, headRefSha: item.headRef.oid });
+		const integration = await this.container.integrations.get(integrationId);
+		const pr: PullRequest = fromProviderPullRequest(item, integration);
+		await integration.mergePullRequest(pr);
 		this.refresh();
 	}
 
@@ -680,17 +702,28 @@ export class FocusProvider implements Disposable {
 							),
 				  );
 
-			const github = await this.container.integrations.get(HostingIntegrationId.GitHub);
-			const myAccount = await github.getCurrentAccount();
+			// There was a conversation https://github.com/gitkraken/vscode-gitlens/pull/3200#discussion_r1563347675
+			// that was related to this piece of code.
+			// But since the code has changed it might be hard to find it, therefore I'm leaving the link here,
+			// because it's still relevant.
+			const myAccounts: Map<string, Account> =
+				await this.container.integrations.getMyCurrentAccounts(supportedFocusIntegrations);
 
-			const inputPrs: EnrichablePullRequest[] = filteredPrs.map(pr => {
+			const inputPrs: (EnrichablePullRequest | undefined)[] = filteredPrs.map(pr => {
 				const providerPr = toProviderPullRequestWithUniqueId(pr.pullRequest);
+
+				const providerId = pr.pullRequest.provider.id;
+
+				if (!isSupportedFocusIntegrationId(providerId) || !isEnrichableRemoteProviderId(providerId)) {
+					Logger.warn(`Unsupported provider ${providerId}`);
+					return undefined;
+				}
 
 				const enrichable = {
 					type: 'pr',
 					id: providerPr.uuid,
 					url: pr.pullRequest.url,
-					provider: 'github',
+					provider: convertRemoteProviderIdToEnrichProvider(providerId),
 				} satisfies EnrichableItem;
 
 				const repoIdentity = {
@@ -716,13 +749,13 @@ export class FocusProvider implements Disposable {
 					repoIdentity: repoIdentity,
 					refs: pr.pullRequest.refs,
 				};
-			}) satisfies EnrichablePullRequest[];
+			}) satisfies (EnrichablePullRequest | undefined)[];
 
 			// Note: The expected output of this is ActionablePullRequest[], but we are passing in EnrichablePullRequest,
 			// so we need to cast the output as FocusPullRequest[].
-			const actionableItems = getActionablePullRequests(
-				inputPrs,
-				{ id: myAccount!.username! },
+			const actionableItems = this.getActionablePullRequests(
+				inputPrs.filter((i: EnrichablePullRequest | undefined): i is EnrichablePullRequest => i != null),
+				myAccounts,
 				{ enrichedItemsByUniqueId: enrichedItemsByEntityId },
 			) as FocusPullRequest[];
 
@@ -752,7 +785,7 @@ export class FocusProvider implements Disposable {
 
 					return {
 						...item,
-						currentViewer: myAccount!,
+						currentViewer: myAccounts.get(item.provider.id)!,
 						codeSuggestionsCount: codeSuggestionsCount,
 						isNew: this.isItemNewInGroup(item, actionableCategory),
 						actionableCategory: actionableCategory,
@@ -779,6 +812,36 @@ export class FocusProvider implements Disposable {
 				debugger;
 			}
 		}
+	}
+
+	// TODO: Switch to using getActionablePullRequests from the shared provider library
+	// once it supports passing in multiple current users, one for each provider
+	private getActionablePullRequests(
+		pullRequests: (PullRequestWithUniqueID & { provider: { id: string } })[],
+		currentUsers: Map<string, Account>,
+		options?: {
+			enrichedItemsByUniqueId?: EnrichedItemsByUniqueId;
+			codeSuggestionsCountByPrUuid?: CodeSuggestionsCountByPrUuid;
+		},
+	): ProviderActionablePullRequest[] {
+		const pullRequestsByIntegration = groupByMap<string, PullRequestWithUniqueID & { provider: { id: string } }>(
+			pullRequests,
+			pr => pr.provider.id,
+		);
+
+		const actionablePullRequests: ProviderActionablePullRequest[] = [];
+		for (const [integrationId, prs] of pullRequestsByIntegration.entries()) {
+			const currentUser = currentUsers.get(integrationId);
+			if (currentUser == null) {
+				Logger.warn(`No current user for integration ${integrationId}`);
+				continue;
+			}
+
+			const actionablePrs = getActionablePullRequests(prs, { id: currentUser.id }, options);
+			actionablePullRequests.push(...actionablePrs);
+		}
+
+		return actionablePullRequests;
 	}
 
 	private _groupedIds: Set<string> | undefined;
@@ -812,6 +875,17 @@ export class FocusProvider implements Disposable {
 		}
 
 		return false;
+	}
+
+	async getConnectedIntegrations(): Promise<Map<IntegrationId, boolean>> {
+		const connected = new Map<IntegrationId, boolean>();
+		await Promise.allSettled(
+			supportedFocusIntegrations.map(async integrationId => {
+				const integration = await this.container.integrations.get(integrationId);
+				connected.set(integrationId, integration.maybeConnected ?? (await integration.isConnected()));
+			}),
+		);
+		return connected;
 	}
 
 	@log<FocusProvider['ensureFocusItemCodeSuggestions']>({

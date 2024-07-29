@@ -2,7 +2,7 @@
 	"name": "gitlens-support-symbolic-link",
 	"displayName": "GitLens — Git supercharged (Support symbolic link)",
 	"description": "Supercharge Git within VS Code — Visualize code authorship at a glance via Git blame annotations and CodeLens, seamlessly navigate and explore Git repositories, gain valuable insights via rich visualizations and powerful comparison commands, and so much more",
-	"version": "15.2.0",
+	"version": "15.2.1",
 	"engines": {
 		"vscode": "^1.82.0"
 	},
@@ -3595,6 +3595,7 @@
 						"default": null,
 						"enum": [
 							"openai:gpt-4o",
+							"openai:gpt-4o-mini",
 							"openai:gpt-4-turbo",
 							"openai:gpt-4-turbo-preview",
 							"openai:gpt-4",
@@ -3615,6 +3616,7 @@
 						],
 						"enumDescriptions": [
 							"OpenAI GPT-4 Omni",
+							"OpenAI GPT-4 Omni Mini",
 							"OpenAI GPT-4 Turbo with Vision",
 							"OpenAI GPT-4 Turbo Preview",
 							"OpenAI GPT-4",
@@ -12171,32 +12173,32 @@
 			"editor/context/copy": [
 				{
 					"command": "gitlens.copyRelativePathToClipboard",
-					"when": "editorTextFocus && resource in gitlens:tabs:blameable && config.gitlens.menus.editor.clipboard && isFileSystemResource && resourceScheme =~ /^(?!output$|vscode-(?!remote|vfs$)).*$/",
+					"when": "editorTextFocus && config.gitlens.menus.editor.clipboard && isFileSystemResource && resourceScheme =~ /^(?!output$|vscode-(?!remote|vfs$)).*$/",
 					"group": "1_gitlens@1"
 				},
 				{
 					"command": "gitlens.copyRemoteFileUrlToClipboard",
-					"when": "editorTextFocus && resource in gitlens:tabs:blameable && config.gitlens.menus.editor.clipboard && isFileSystemResource && resourceScheme =~ /^(?!output$|vscode-(?!remote|vfs$)).*$/",
+					"when": "editorTextFocus && resource in gitlens:tabs:tracked && config.gitlens.menus.editor.clipboard && isFileSystemResource && resourceScheme =~ /^(?!output$|vscode-(?!remote|vfs$)).*$/",
 					"group": "1_gitlens_remote@1"
 				},
 				{
 					"command": "gitlens.copyRemoteFileUrlFrom",
-					"when": "editorTextFocus && resource in gitlens:tabs:blameable && config.gitlens.menus.editor.clipboard && isFileSystemResource && resourceScheme =~ /^(?!output$|vscode-(?!remote|vfs$)).*$/",
+					"when": "editorTextFocus && resource in gitlens:tabs:tracked && config.gitlens.menus.editor.clipboard && isFileSystemResource && resourceScheme =~ /^(?!output$|vscode-(?!remote|vfs$)).*$/",
 					"group": "1_gitlens_remote@2"
 				},
 				{
 					"command": "gitlens.copyRemoteCommitUrl",
-					"when": "editorTextFocus && resource in gitlens:tabs:blameable && config.gitlens.menus.editor.clipboard && isFileSystemResource && resourceScheme =~ /^(?!output$|vscode-(?!remote|vfs$)).*$/",
+					"when": "editorTextFocus && resource in gitlens:tabs:tracked && config.gitlens.menus.editor.clipboard && isFileSystemResource && resourceScheme =~ /^(?!output$|vscode-(?!remote|vfs$)).*$/",
 					"group": "1_gitlens_remote@3"
 				},
 				{
 					"command": "gitlens.copyShaToClipboard",
-					"when": "editorTextFocus && resource in gitlens:tabs:blameable && config.gitlens.menus.editor.clipboard && isFileSystemResource && resourceScheme =~ /^(?!output$|vscode-(?!remote|vfs$)).*$/",
+					"when": "editorTextFocus && resource in gitlens:tabs:tracked && config.gitlens.menus.editor.clipboard && isFileSystemResource && resourceScheme =~ /^(?!output$|vscode-(?!remote|vfs$)).*$/",
 					"group": "3_gitlens@1"
 				},
 				{
 					"command": "gitlens.copyMessageToClipboard",
-					"when": "editorTextFocus && resource in gitlens:tabs:blameable && config.gitlens.menus.editor.clipboard && isFileSystemResource && resourceScheme =~ /^(?!output$|vscode-(?!remote|vfs$)).*$/",
+					"when": "editorTextFocus && resource in gitlens:tabs:tracked && config.gitlens.menus.editor.clipboard && isFileSystemResource && resourceScheme =~ /^(?!output$|vscode-(?!remote|vfs$)).*$/",
 					"group": "3_gitlens@2"
 				},
 				{
@@ -12211,7 +12213,7 @@
 				},
 				{
 					"command": "gitlens.copyDeepLinkToFileAtRevision",
-					"when": "editorTextFocus && resource in gitlens:tabs:blameable && config.gitlens.menus.editor.clipboard && isFileSystemResource && resourceScheme =~ /^(?!output$|vscode-(?!remote|vfs$)).*$/",
+					"when": "editorTextFocus && resource in gitlens:tabs:tracked && config.gitlens.menus.editor.clipboard && isFileSystemResource && resourceScheme =~ /^(?!output$|vscode-(?!remote|vfs$)).*$/",
 					"group": "1_gitlens@4"
 				}
 			],
@@ -12515,12 +12517,12 @@
 			"menuBar/edit/copy": [
 				{
 					"command": "gitlens.copyRemoteFileUrlToClipboard",
-					"when": "resource in gitlens:tabs:blameable && config.gitlens.menus.editor.clipboard",
+					"when": "resource in gitlens:tabs:tracked && config.gitlens.menus.editor.clipboard",
 					"group": "1_gitlens@1"
 				},
 				{
 					"command": "gitlens.copyRemoteFileUrlFrom",
-					"when": "resource in gitlens:tabs:blameable && config.gitlens.menus.editor.clipboard",
+					"when": "resource in gitlens:tabs:tracked && config.gitlens.menus.editor.clipboard",
 					"group": "1_gitlens@2"
 				}
 			],
@@ -16062,12 +16064,12 @@
 			"gitlens/editor/context/changes": [
 				{
 					"command": "gitlens.diffLineWithPrevious",
-					"when": "editorTextFocus && resource in gitlens:tabs:blameable",
+					"when": "editorTextFocus && resource in gitlens:tabs:tracked",
 					"group": "1_gitlens@1"
 				},
 				{
 					"command": "gitlens.diffLineWithWorking",
-					"when": "editorTextFocus && resource in gitlens:tabs:blameable",
+					"when": "editorTextFocus && resource in gitlens:tabs:tracked",
 					"group": "1_gitlens@2"
 				},
 				{
@@ -16236,7 +16238,7 @@
 				},
 				{
 					"command": "gitlens.copyDeepLinkToFileAtRevision",
-					"when": "resource in gitlens:tabs:blameable",
+					"when": "resource in gitlens:tabs:tracked",
 					"group": "1_gitlens@3"
 				}
 			],
@@ -17184,7 +17186,7 @@
 			},
 			{
 				"view": "gitlens.views.worktrees",
-				"contents": "[Continue](command:gitlens.plus.startPreviewTrial?%7B%22source%22%3A%22worktrees%22%7D)\n\nContinuing gives you 3 days to preview Workrees and other local Pro features for 3 days. [Start 7-day Pro trial](command:gitlens.plus.signUp?%7B%22source%22%3A%22worktrees%22%7D) or [sign in](command:gitlens.plus.login?%7B%22source%22%3A%22worktrees%22%7D) for full access to Pro features.",
+				"contents": "[Continue](command:gitlens.plus.startPreviewTrial?%7B%22source%22%3A%22worktrees%22%7D)\n\nContinuing gives you 3 days to preview Worktrees and other local Pro features for 3 days. [Start 7-day Pro trial](command:gitlens.plus.signUp?%7B%22source%22%3A%22worktrees%22%7D) or [sign in](command:gitlens.plus.login?%7B%22source%22%3A%22worktrees%22%7D) for full access to Pro features.",
 				"when": "gitlens:plus:required && gitlens:plus:state == 0"
 			},
 			{
@@ -17194,7 +17196,7 @@
 			},
 			{
 				"view": "gitlens.views.worktrees",
-				"contents": "[Upgrade to Pro](command:gitlens.plus.upgrade?%7B%22source%22%3A%22worktrees%22%7D)\n\nYour Pro trial has ended. Please upgrade for full access to Worktrees and other Pro features.\nSpecial: 50% off first seat of Pro — only $4/month!",
+				"contents": "[Upgrade to Pro](command:gitlens.plus.upgrade?%7B%22source%22%3A%22worktrees%22%7D)\n\nYour Pro trial has ended. Please upgrade for full access to Worktrees and other Pro features.\nSpecial: 1st seat of Pro is now 50%+ off.",
 				"when": "gitlens:plus:required && gitlens:plus:state == 4"
 			},
 			{
@@ -17439,7 +17441,7 @@
 					{
 						"id": "pro-trial",
 						"title": "Get Started with Pro",
-						"description": "During your trial, you have access to all [Pro features](https://gitkraken.com/gitlens/pro-features?utm_source=gitlens-extension&utm_medium=in-app-links) and to the full [GitKraken DevEx platform](https://gitkraken.com/devex?utm_source=gitlens-extension&utm_medium=in-app-links). Be sure to take full advantage of these powerful features.\n\n[Upgrade to Pro](command:gitlens.plus.upgrade?%7B%22source%22%3A%22walkthrough%22%7D)\n\n💡Special: 50% off first seat of Pro — only $4/month!\n**Pro Features**\n$(gitlens-graph)  [Commit Graph](command:gitlens.openWalkthrough?%7B%22step%22%3A%22visualize%22,%22source%22%3A%22walkthrough%22%7D) — visualize your repository and keep track of all work in progress\n$(rocket)  [Launchpad](command:gitlens.openWalkthrough?%7B%22step%22%3A%22launchpad%22,%22source%22%3A%22walkthrough%22%7D) — stay focused and keep your team unblocked\n$(gitlens-code-suggestion)  [Code Suggest](command:gitlens.openWalkthrough?%7B%22step%22%3A%22code-collab%22,%22source%22%3A%22walkthrough%22%7D) — free your code reviews from unnecessary restrictions\n$(gitlens-cloud-patch)  [Cloud Patches](command:gitlens.openWalkthrough?%7B%22step%22%3A%22code-collab%22,%22source%22%3A%22walkthrough%22%7D) — easily and securely share code with your teammates\n$(gitlens-worktrees-view)  **Worktrees** — work on multiple branches simultaneously\n$(gitlens-workspaces-view)  **Workspaces** — group and manage multiple repositories together\n$(graph-scatter)  [Visual File History](command:gitlens.openWalkthrough?%7B%22step%22%3A%22visualize%22,%22source%22%3A%22walkthrough%22%7D) — visualize the evolution of a file and quickly identify when the most impactful changes were made and by whom",
+						"description": "During your trial, you have access to all [Pro features](https://gitkraken.com/gitlens/pro-features?utm_source=gitlens-extension&utm_medium=in-app-links) and to the full [GitKraken DevEx platform](https://gitkraken.com/devex?utm_source=gitlens-extension&utm_medium=in-app-links). Be sure to take full advantage of these powerful features.\n\n[Upgrade to Pro](command:gitlens.plus.upgrade?%7B%22source%22%3A%22walkthrough%22%7D)\n\n💡Special: 1st seat of Pro is now 50%+ off.\n**Pro Features**\n$(gitlens-graph)  [Commit Graph](command:gitlens.openWalkthrough?%7B%22step%22%3A%22visualize%22,%22source%22%3A%22walkthrough%22%7D) — visualize your repository and keep track of all work in progress\n$(rocket)  [Launchpad](command:gitlens.openWalkthrough?%7B%22step%22%3A%22launchpad%22,%22source%22%3A%22walkthrough%22%7D) — stay focused and keep your team unblocked\n$(gitlens-code-suggestion)  [Code Suggest](command:gitlens.openWalkthrough?%7B%22step%22%3A%22code-collab%22,%22source%22%3A%22walkthrough%22%7D) — free your code reviews from unnecessary restrictions\n$(gitlens-cloud-patch)  [Cloud Patches](command:gitlens.openWalkthrough?%7B%22step%22%3A%22code-collab%22,%22source%22%3A%22walkthrough%22%7D) — easily and securely share code with your teammates\n$(gitlens-worktrees-view)  **Worktrees** — work on multiple branches simultaneously\n$(gitlens-workspaces-view)  **Workspaces** — group and manage multiple repositories together\n$(graph-scatter)  [Visual File History](command:gitlens.openWalkthrough?%7B%22step%22%3A%22visualize%22,%22source%22%3A%22walkthrough%22%7D) — visualize the evolution of a file and quickly identify when the most impactful changes were made and by whom",
 						"media": {
 							"markdown": "walkthroughs/welcome/pro-trial.md"
 						},
@@ -17448,7 +17450,7 @@
 					{
 						"id": "pro-upgrade",
 						"title": "Upgrade to Pro",
-						"description": "Your Pro trial has ended. Please upgrade for full access to all [Pro features](https://gitkraken.com/gitlens/pro-features?utm_source=gitlens-extension&utm_medium=in-app-links) and to the full [GitKraken DevEx platform](https://gitkraken.com/devex?utm_source=gitlens-extension&utm_medium=in-app-links).\n\n[Upgrade to Pro](command:gitlens.plus.upgrade?%7B%22source%22%3A%22walkthrough%22%7D)\n\n💡Special: 50% off first seat of Pro — only $4/month!\n**Pro Features**\n$(gitlens-graph)  [Commit Graph](command:gitlens.openWalkthrough?%7B%22step%22%3A%22visualize%22,%22source%22%3A%22walkthrough%22%7D) — visualize your repository and keep track of all work in progress\n$(rocket)  [Launchpad](command:gitlens.openWalkthrough?%7B%22step%22%3A%22launchpad%22,%22source%22%3A%22walkthrough%22%7D) — stay focused and keep your team unblocked\n$(gitlens-code-suggestion)  [Code Suggest](command:gitlens.openWalkthrough?%7B%22step%22%3A%22code-collab%22,%22source%22%3A%22walkthrough%22%7D) — free your code reviews from unnecessary restrictions\n$(gitlens-cloud-patch)  [Cloud Patches](command:gitlens.openWalkthrough?%7B%22step%22%3A%22code-collab%22,%22source%22%3A%22walkthrough%22%7D) — easily and securely share code with your teammates\n$(gitlens-worktrees-view)  **Worktrees** — work on multiple branches simultaneously\n$(gitlens-workspaces-view)  **Workspaces** — group and manage multiple repositories together\n$(graph-scatter)  [Visual File History](command:gitlens.openWalkthrough?%7B%22step%22%3A%22visualize%22,%22source%22%3A%22walkthrough%22%7D) — visualize the evolution of a file and quickly identify when the most impactful changes were made and by whom",
+						"description": "Your Pro trial has ended. Please upgrade for full access to all [Pro features](https://gitkraken.com/gitlens/pro-features?utm_source=gitlens-extension&utm_medium=in-app-links) and to the full [GitKraken DevEx platform](https://gitkraken.com/devex?utm_source=gitlens-extension&utm_medium=in-app-links).\n\n[Upgrade to Pro](command:gitlens.plus.upgrade?%7B%22source%22%3A%22walkthrough%22%7D)\n\n💡Special: 1st seat of Pro is now 50%+ off.\n**Pro Features**\n$(gitlens-graph)  [Commit Graph](command:gitlens.openWalkthrough?%7B%22step%22%3A%22visualize%22,%22source%22%3A%22walkthrough%22%7D) — visualize your repository and keep track of all work in progress\n$(rocket)  [Launchpad](command:gitlens.openWalkthrough?%7B%22step%22%3A%22launchpad%22,%22source%22%3A%22walkthrough%22%7D) — stay focused and keep your team unblocked\n$(gitlens-code-suggestion)  [Code Suggest](command:gitlens.openWalkthrough?%7B%22step%22%3A%22code-collab%22,%22source%22%3A%22walkthrough%22%7D) — free your code reviews from unnecessary restrictions\n$(gitlens-cloud-patch)  [Cloud Patches](command:gitlens.openWalkthrough?%7B%22step%22%3A%22code-collab%22,%22source%22%3A%22walkthrough%22%7D) — easily and securely share code with your teammates\n$(gitlens-worktrees-view)  **Worktrees** — work on multiple branches simultaneously\n$(gitlens-workspaces-view)  **Workspaces** — group and manage multiple repositories together\n$(graph-scatter)  [Visual File History](command:gitlens.openWalkthrough?%7B%22step%22%3A%22visualize%22,%22source%22%3A%22walkthrough%22%7D) — visualize the evolution of a file and quickly identify when the most impactful changes were made and by whom",
 						"media": {
 							"markdown": "walkthroughs/welcome/pro-upgrade.md"
 						},
@@ -17570,7 +17572,7 @@
 	},
 	"dependencies": {
 		"@gitkraken/gitkraken-components": "10.5.1",
-		"@gitkraken/provider-apis": "0.22.9",
+		"@gitkraken/provider-apis": "0.24.2",
 		"@gitkraken/shared-web-components": "0.1.1-rc.15",
 		"@lit/react": "1.0.5",
 		"@microsoft/fast-element": "1.13.0",
@@ -17599,7 +17601,7 @@
 	},
 	"devDependencies": {
 		"@eamodio/eslint-lite-webpack-plugin": "0.0.8",
-		"@swc/core": "1.6.13",
+		"@swc/core": "1.7.0",
 		"@twbs/fantasticon": "3.0.0",
 		"@types/mocha": "10.0.7",
 		"@types/node": "18.15.0",
@@ -17607,11 +17609,11 @@
 		"@types/react-dom": "17.0.21",
 		"@types/sortablejs": "1.15.8",
 		"@types/vscode": "1.82.0",
-		"@typescript-eslint/eslint-plugin": "7.16.0",
-		"@typescript-eslint/parser": "7.16.0",
+		"@typescript-eslint/eslint-plugin": "7.16.1",
+		"@typescript-eslint/parser": "7.16.1",
 		"@vscode/test-electron": "2.4.1",
 		"@vscode/test-web": "0.0.56",
-		"@vscode/vsce": "2.30.0",
+		"@vscode/vsce": "2.31.1",
 		"circular-dependency-plugin": "5.2.2",
 		"clean-webpack-plugin": "4.0.0",
 		"concurrently": "8.2.2",
@@ -17621,7 +17623,7 @@
 		"css-minimizer-webpack-plugin": "7.0.0",
 		"cssnano-preset-advanced": "7.0.4",
 		"esbuild": "0.23.0",
-		"esbuild-loader": "4.2.1",
+		"esbuild-loader": "4.2.2",
 		"esbuild-sass-plugin": "3.3.1",
 		"eslint": "8.57.0",
 		"eslint-cli": "1.1.1",
@@ -17631,7 +17633,7 @@
 		"eslint-plugin-lit": "1.14.0",
 		"eslint-plugin-wc": "2.1.0",
 		"fork-ts-checker-webpack-plugin": "6.5.3",
-		"glob": "10.4.5",
+		"glob": "11.0.0",
 		"html-loader": "5.0.0",
 		"html-webpack-plugin": "5.6.0",
 		"image-minimizer-webpack-plugin": "4.0.2",
