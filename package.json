@@ -1,7 +1,7 @@
 {
 	"name": "gitlens-support-symbolic-link",
-	"displayName": "GitLens — Git supercharged (Support symbolic link)",
-	"description": "Supercharge Git within VS Code — Visualize code authorship at a glance via Git blame annotations and CodeLens, seamlessly navigate and explore Git repositories, gain valuable insights via rich visualizations and powerful comparison commands, and so much more",
+	"displayName": "GitLens (Support symbolic link)",
+	"description": "Forked from GitLens, customized to enhance symbolic link support in Visual Studio Code.",
 	"version": "15.2.1",
 	"engines": {
 		"vscode": "^1.82.0"
@@ -18,7 +18,7 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/gitkraken/vscode-gitlens.git"
+		"url": "https://github.com/namhhitvn/vscode-gitlens/tree/main"
 	},
 	"main": "./dist/gitlens.js",
 	"browser": "./dist/browser/gitlens.js",

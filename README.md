@@ -1,3 +1,7 @@
+# Forked GitLens - Customized for Symbolic Link Support
+
+This repository is a fork of the GitLens extension for Visual Studio Code, customized to enhance support for symbolic links. GitLens supercharges the Git capabilities within VS Code, providing deep insights into your repository to help you understand, write, and review code more effectively. This customized version aims to improve the handling and visualization of symbolic links within your projects, ensuring a seamless and productive Git experience.
+
 # GitLens &mdash; Supercharge Git in VS Code
 
 > Supercharge Git and unlock **untapped knowledge** within your repository to better **understand**, **write**, and **review** code. Focus, collaborate, accelerate.
