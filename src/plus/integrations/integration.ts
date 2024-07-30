@@ -2,6 +2,7 @@ import type { CancellationToken, Event, MessageItem } from 'vscode';
 import { EventEmitter, window } from 'vscode';
 import type { DynamicAutolinkReference } from '../../annotations/autolinks';
 import type { AutolinkReference } from '../../config';
+import type { Sources } from '../../constants';
 import type { Container } from '../../container';
 import { AuthenticationError, CancellationError, ProviderRequestClientError } from '../../errors';
 import type { PagedResult } from '../../git/gitProvider';
@@ -19,6 +20,7 @@ import { showIntegrationDisconnectedTooManyFailedRequestsWarningMessage } from '
 import { configuration } from '../../system/configuration';
 import { gate } from '../../system/decorators/gate';
 import { debug, log } from '../../system/decorators/log';
+import { first } from '../../system/iterable';
 import { Logger } from '../../system/logger';
 import type { LogScope } from '../../system/logger.scope';
 import { getLogScope } from '../../system/logger.scope';
@@ -29,6 +31,7 @@ import type {
 } from './authentication/integrationAuthentication';
 import { CloudIntegrationAuthenticationProvider } from './authentication/integrationAuthentication';
 import type { ProviderAuthenticationSession } from './authentication/models';
+import { isSupportedCloudIntegrationId } from './authentication/models';
 import type {
 	GetIssuesOptions,
 	GetPullRequestsOptions,
@@ -136,10 +139,28 @@ export abstract class IntegrationBase<
 	}
 
 	@log()
-	async connect(): Promise<boolean> {
+	async connect(source?: Sources): Promise<boolean> {
 		try {
-			const session = await this.ensureSession(true);
-			return Boolean(session);
+			// Some integrations does not require managmement of Cloud Integrations (e.g. GitHub that can take a built-in VS Code session),
+			// therefore we try to connect them right away.
+			// Only if our attempt fails, we fall to manageCloudIntegrations flow.
+			let connected = Boolean(await this.ensureSession(true));
+			if (!connected) {
+				if (isSupportedCloudIntegrationId(this.id)) {
+					await this.container.integrations.manageCloudIntegrations(
+						{ integrationId: this.id, skipIfConnected: true },
+						{
+							source: source || 'integrations',
+							detail: {
+								action: 'connect',
+								integration: this.id,
+							},
+						},
+					);
+					connected = Boolean(await this.ensureSession(true));
+				}
+			}
+			return connected;
 		} catch (ex) {
 			return false;
 		}
@@ -844,7 +865,7 @@ export abstract class HostingIntegration<
 				return undefined;
 			}
 
-			const organization: string = organizations.values().next().value;
+			const organization: string = first(organizations.values())!;
 
 			if (options?.filters != null) {
 				if (!api.providerSupportsIssueFilters(providerId, options.filters)) {
@@ -1055,7 +1076,7 @@ export abstract class HostingIntegration<
 					return undefined;
 				}
 
-				const organization: string = organizations.values().next().value;
+				const organization: string = first(organizations.values())!;
 				try {
 					userAccount = await api.getCurrentUserForInstance(providerId, organization);
 				} catch (ex) {

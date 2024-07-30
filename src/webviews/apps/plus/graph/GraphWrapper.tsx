@@ -87,7 +87,7 @@ export interface GraphWrapperProps {
 	onColumnsChange?: (colsSettings: GraphColumnsConfig) => void;
 	onDoubleClickRef?: (ref: GraphRef, metadata?: GraphRefMetadataItem) => void;
 	onDoubleClickRow?: (row: GraphRow, preserveFocus?: boolean) => void;
-	onHoverRowPromise?: (row: GraphRow) => Promise<DidGetRowHoverParams | undefined>;
+	onHoverRowPromise?: (row: GraphRow) => Promise<DidGetRowHoverParams>;
 	onJumpToRefPromise?: (alt: boolean) => Promise<{ name: string; sha: string } | undefined>;
 	onMissingAvatars?: (emails: Record<string, string>) => void;
 	onMissingRefsMetadata?: (metadata: GraphMissingRefsMetadata) => void;
@@ -1527,9 +1527,7 @@ export function GraphWrapper({
 				visible={!allowed}
 			>
 				<p slot="feature">
-					<a href="https://help.gitkraken.com/gitlens/gitlens-features/#commit-graph-%e2%9c%a8">
-						Commit Graph
-					</a>
+					<a href="https://help.gitkraken.com/gitlens/gitlens-features/#commit-graph-pro">Commit Graph</a>
 					<GlFeatureBadge
 						source={{ source: 'graph', detail: 'badge' }}
 						subscription={subscription}

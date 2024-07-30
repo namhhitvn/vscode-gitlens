@@ -1,7 +1,7 @@
 import type { AuthenticationSession, CancellationToken, Disposable, Uri } from 'vscode';
 import { authentication, CancellationTokenSource, window } from 'vscode';
 import { wrapForForcedInsecureSSL } from '@env/fetch';
-import type { SecretKeys } from '../../../constants';
+import type { IntegrationAuthenticationKeys } from '../../../constants';
 import type { Container } from '../../../container';
 import { debug, log } from '../../../system/decorators/log';
 import type { DeferredEventExecutor } from '../../../system/event';
@@ -15,6 +15,7 @@ import {
 	supportedIntegrationIds,
 } from '../providers/models';
 import type { ProviderAuthenticationSession } from './models';
+import { isSupportedCloudIntegrationId } from './models';
 
 interface StoredSession {
 	id: string;
@@ -68,15 +69,18 @@ abstract class IntegrationAuthenticationProviderBase<ID extends IntegrationId = 
 		ignoreErrors: boolean;
 	}): Promise<StoredSession | undefined>;
 
-	protected async deleteSecret(key: SecretKeys) {
+	protected async deleteSecret(key: IntegrationAuthenticationKeys) {
 		await this.container.storage.deleteSecret(key);
 	}
 
-	protected async writeSecret(key: SecretKeys, session: AuthenticationSession | StoredSession) {
+	protected async writeSecret(key: IntegrationAuthenticationKeys, session: AuthenticationSession | StoredSession) {
 		await this.container.storage.storeSecret(key, JSON.stringify(session));
 	}
 
-	protected async readSecret(key: SecretKeys, ignoreErrors: boolean): Promise<StoredSession | undefined> {
+	protected async readSecret(
+		key: IntegrationAuthenticationKeys,
+		ignoreErrors: boolean,
+	): Promise<StoredSession | undefined> {
 		let storedSession: StoredSession | undefined;
 		try {
 			const sessionJSON = await this.container.storage.getSecret(key);
@@ -142,11 +146,11 @@ abstract class IntegrationAuthenticationProviderBase<ID extends IntegrationId = 
 export abstract class LocalIntegrationAuthenticationProvider<
 	ID extends IntegrationId = IntegrationId,
 > extends IntegrationAuthenticationProviderBase<ID> {
-	protected async deleteAllSecrets(sessionId: string) {
+	protected override async deleteAllSecrets(sessionId: string) {
 		await this.deleteSecret(this.getLocalSecretKey(sessionId));
 	}
 
-	protected async storeSession(sessionId: string, session: AuthenticationSession) {
+	protected override async storeSession(sessionId: string, session: AuthenticationSession) {
 		await this.writeSecret(this.getLocalSecretKey(sessionId), session);
 	}
 
@@ -180,8 +184,8 @@ export abstract class CloudIntegrationAuthenticationProvider<
 		await this.deleteSecret(key);
 	}
 
-	protected async deleteAllSecrets(sessionId: string) {
-		await Promise.all([
+	protected override async deleteAllSecrets(sessionId: string) {
+		await Promise.allSettled([
 			this.deleteSecret(this.getLocalSecretKey(sessionId)),
 			this.deleteSecret(this.getCloudSecretKey(sessionId)),
 		]);
@@ -215,7 +219,7 @@ export abstract class CloudIntegrationAuthenticationProvider<
 			// store with the "cloud" type key, and then use that one
 			//
 			if (session.expiresAt != null) {
-				await Promise.all([
+				await Promise.allSettled([
 					this.deleteSecret(this.getLocalSecretKey(sessionId)),
 					this.writeSecret(this.getCloudSecretKey(sessionId), session),
 				]);
@@ -235,12 +239,12 @@ export abstract class CloudIntegrationAuthenticationProvider<
 		descriptor?: IntegrationAuthenticationSessionDescriptor,
 		options?: { createIfNeeded?: boolean; forceNewSession?: boolean },
 	): Promise<ProviderAuthenticationSession | undefined> {
-		const session = await super.getSession(descriptor, options);
-		if (session != null) return session;
-
 		// by default getBuiltInExistingSession returns undefined
 		// but specific providers can override it to return a session (e.g. GitHub)
-		return this.getBuiltInExistingSession(descriptor);
+		const existingSession = await this.getBuiltInExistingSession(descriptor);
+		if (existingSession != null) return existingSession;
+
+		return super.getSession(descriptor, options);
 	}
 
 	protected override async createSession(
@@ -435,6 +439,14 @@ export class IntegrationAuthenticationService implements Disposable {
 					provider = new (
 						await import(/* webpackChunkName: "integrations" */ './bitbucket')
 					).BitbucketAuthenticationProvider(this.container);
+					break;
+				case HostingIntegrationId.GitHub:
+					provider = isSupportedCloudIntegrationId(HostingIntegrationId.GitHub)
+						? new (
+								await import(/* webpackChunkName: "integrations" */ './github')
+						  ).GitHubAuthenticationProvider(this.container)
+						: new BuiltInAuthenticationProvider(this.container, providerId);
+
 					break;
 				case SelfHostedIntegrationId.GitHubEnterprise:
 					provider = new (

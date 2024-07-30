@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 
 - Shows GitLab merge requests in the _Launchpad_ when GitLab integration is connected
 - Adds a new "Connect" button to the _Launchpad_ that allows the user to connect additional integrations.
+- Adds `gitlens.experimental.cloudIntegrations.github.enabled` setting to connect GitHub integration using cloud integration of GitKraken account.
 
 ## [15.2.3] - 2024-07-26
 
@@ -25,6 +26,8 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 - Fixes [#3422](https://github.com/gitkraken/vscode-gitlens/issues/3422) - Extra logging
 - Fixes [#3406](https://github.com/gitkraken/vscode-gitlens/issues/3406) - Worktrees typo in package.json &mdash; thanks to [PR #3407](https://github.com/gitkraken/vscode-gitlens/pull/3407) by Matthew Yu ([@matthewyu01](https://github.com/matthewyu01))
 - Fixes cloud patch creation error on azure repos
+- Fixes [#3385](https://github.com/gitkraken/vscode-gitlens/issues/3385) - Provides commit from stash on create patch from stash action
+- Fixes [#3414](https://github.com/gitkraken/vscode-gitlens/issues/3414) - Patch creation may be done multiple times
 
 ## [15.2.1] - 2024-07-24
 

@@ -70,6 +70,7 @@ import {
 } from '../../../git/models/repository';
 import type { GitSearch } from '../../../git/search';
 import { getSearchQueryComparisonKey } from '../../../git/search';
+import { splitGitCommitMessage } from '../../../git/utils/commit-utils';
 import { ReferencesQuickPickIncludes, showReferencePicker } from '../../../quickpicks/referencePicker';
 import { showRepositoryPicker } from '../../../quickpicks/repositoryPicker';
 import { executeActionCommand, executeCommand, executeCoreCommand, registerCommand } from '../../../system/command';
@@ -229,7 +230,7 @@ export class GraphWebviewProvider implements WebviewProvider<State, State, Graph
 	private _etagRepository?: number;
 	private _firstSelection = true;
 	private _graph?: GitGraph;
-	private _hoverCache = new Map<string, Promise<string | undefined>>();
+	private _hoverCache = new Map<string, Promise<string>>();
 	private _hoverCancellation: CancellationTokenSource | undefined;
 
 	private readonly _ipcNotificationMap = new Map<IpcNotification<any>, () => Promise<boolean>>([
@@ -553,6 +554,8 @@ export class GraphWebviewProvider implements WebviewProvider<State, State, Graph
 			this.host.registerWebviewCommand('gitlens.graph.copyDeepLinkToRepo', this.copyDeepLinkToRepo),
 			this.host.registerWebviewCommand('gitlens.graph.copyDeepLinkToTag', this.copyDeepLinkToTag),
 			this.host.registerWebviewCommand('gitlens.graph.shareAsCloudPatch', this.shareAsCloudPatch),
+			this.host.registerWebviewCommand('gitlens.graph.createPatch', this.shareAsCloudPatch),
+			this.host.registerWebviewCommand('gitlens.graph.createCloudPatch', this.shareAsCloudPatch),
 
 			this.host.registerWebviewCommand('gitlens.graph.openChangedFiles', this.openFiles),
 			this.host.registerWebviewCommand('gitlens.graph.openOnlyChangedFiles', this.openOnlyChangedFiles),
@@ -922,7 +925,7 @@ export class GraphWebviewProvider implements WebviewProvider<State, State, Graph
 	private async onHoverRowRequest<T extends typeof GetRowHoverRequest>(requestType: T, msg: IpcCallMessageType<T>) {
 		const hover: DidGetRowHoverParams = {
 			id: msg.params.id,
-			cancelled: true,
+			markdown: undefined!,
 		};
 
 		if (this._hoverCancellation != null) {
@@ -982,12 +985,17 @@ export class GraphWebviewProvider implements WebviewProvider<State, State, Graph
 
 			if (markdown != null) {
 				try {
-					hover.markdown = await markdown;
-					hover.cancelled = false;
-				} catch {}
+					hover.markdown = {
+						status: 'fulfilled' as const,
+						value: await markdown,
+					};
+				} catch (ex) {
+					hover.markdown = { status: 'rejected' as const, reason: ex };
+				}
 			}
 		}
 
+		hover.markdown ??= { status: 'rejected' as const, reason: new CancellationError() };
 		void this.host.respond(requestType, msg, hover);
 	}
 
@@ -2676,11 +2684,15 @@ export class GraphWebviewProvider implements WebviewProvider<State, State, Graph
 	@log()
 	private async shareAsCloudPatch(item?: GraphItemContext) {
 		const ref = this.getGraphItemRef(item, 'revision') ?? this.getGraphItemRef(item, 'stash');
+
 		if (ref == null) return Promise.resolve();
 
+		const { title, description } = splitGitCommitMessage(ref.message);
 		return executeCommand<CreatePatchCommandArgs>(Commands.CreateCloudPatch, {
 			to: ref.ref,
 			repoPath: ref.repoPath,
+			title: title,
+			description: description,
 		});
 	}
 
