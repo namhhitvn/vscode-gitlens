@@ -1,6 +1,6 @@
 {
 	"name": "gitlens-support-symbolic-link",
-	"displayName": "GitLens (Support symbolic link)",
+	"displayName": "GitLens (Unofficial/Support symbolic link)",
 	"description": "Forked from GitLens, customized to enhance symbolic link support in Visual Studio Code.",
 	"version": "15.2.1",
 	"engines": {
