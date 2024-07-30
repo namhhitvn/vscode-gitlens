@@ -40,12 +40,7 @@
 		"theme": "dark"
 	},
 	"keywords": [
-		"gitlens",
-		"git",
-		"blame",
-		"log",
-		"annotation",
-		"multi-root ready"
+		"namhhitvn"
 	],
 	"activationEvents": [
 		"onAuthenticationRequest:gitlens-gitkraken",
